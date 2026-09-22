@@ -1,0 +1,47 @@
+# docker-compose.yml
+# Provisions a Jenkins controller + a Docker-in-Docker (DinD) sidecar
+# so Jenkins can build/push images without touching the host's Docker daemon.
+
+services:
+  # --- Docker-in-Docker: gives Jenkins an isolated Docker engine to build with ---
+  docker-dind:
+    image: docker:dind
+    container_name: docker-dind
+    privileged: true                       # required for DinD to run its own daemon
+    environment:
+      - DOCKER_TLS_CERTDIR=/certs          # enables TLS between Jenkins and this daemon
+    volumes:
+      - jenkins-docker-certs:/certs/client  # shared client certs (mounted read-only in jenkins svc)
+      - jenkins-data:/var/jenkins_home      # so build context/workspace is consistent
+    networks:
+      - jenkins-net
+    expose:
+      - 2376                               # TLS Docker API port, internal network only
+
+  # --- Jenkins controller ---
+  jenkins:
+    image: jenkins/jenkins:lts-jdk17
+    container_name: jenkins
+    restart: unless-stopped
+    user: jenkins                          # non-root: avoids running the controller as root
+    environment:
+      - DOCKER_HOST=tcp://docker-dind:2376  # talk to the DinD sidecar, not the host daemon
+      - DOCKER_CERT_PATH=/certs/client
+      - DOCKER_TLS_VERIFY=1
+    ports:
+      - "127.0.0.1:8080:8080"              # bind to localhost only — no public exposure
+    volumes:
+      - jenkins-data:/var/jenkins_home      # persist Jenkins config, jobs, build history
+      - jenkins-docker-certs:/certs/client:ro
+    networks:
+      - jenkins-net
+    depends_on:
+      - docker-dind
+
+volumes:
+  jenkins-data:                # Jenkins home: jobs, plugins, credentials, build logs
+  jenkins-docker-certs:        # shared TLS certs between jenkins and docker-dind
+
+networks:
+  jenkins-net:
+    driver: bridge
