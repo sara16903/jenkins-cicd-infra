@@ -1,0 +1,20 @@
+# Custom Jenkins image: adds the Docker CLI so pipeline stages can run
+# "docker build" / "docker push" against the docker-dind sidecar.
+FROM jenkins/jenkins:lts-jdk17
+
+USER root
+
+# Install the Docker CLI binary directly from Docker's official static
+# release, since some minimal base images don't ship a usable binary
+# via the docker.io apt package.
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends curl && \
+    curl -fsSL https://download.docker.com/linux/static/stable/x86_64/docker-24.0.7.tgz -o /tmp/docker.tgz && \
+    tar xzvf /tmp/docker.tgz -C /tmp && \
+    mv /tmp/docker/docker /usr/local/bin/docker && \
+    rm -rf /tmp/docker /tmp/docker.tgz && \
+    apt-get purge -y curl && \
+    apt-get autoremove -y && \
+    rm -rf /var/lib/apt/lists/*
+
+USER jenkins

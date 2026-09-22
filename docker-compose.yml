@@ -4,9 +4,11 @@
 
 services:
   # --- Docker-in-Docker: gives Jenkins an isolated Docker engine to build with ---
-  docker-dind:
+  # Named "docker" (not "docker-dind") because the DinD image auto-generates
+  # its TLS certificate for the hostname "docker" by convention.
+  docker:
     image: docker:dind
-    container_name: docker-dind
+    container_name: docker
     privileged: true                       # required for DinD to run its own daemon
     environment:
       - DOCKER_TLS_CERTDIR=/certs          # enables TLS between Jenkins and this daemon
@@ -20,23 +22,25 @@ services:
 
   # --- Jenkins controller ---
   jenkins:
-    image: jenkins/jenkins:lts-jdk17
+    build:
+      context: .
+      dockerfile: Dockerfile.jenkins
     container_name: jenkins
     restart: unless-stopped
     user: jenkins                          # non-root: avoids running the controller as root
     environment:
-      - DOCKER_HOST=tcp://docker-dind:2376  # talk to the DinD sidecar, not the host daemon
+      - DOCKER_HOST=tcp://docker:2376       # talk to the DinD sidecar, not the host daemon
       - DOCKER_CERT_PATH=/certs/client
       - DOCKER_TLS_VERIFY=1
     ports:
-      - "127.0.0.1:8080:8080"              # bind to localhost only — no public exposure
+      - "127.0.0.1:8080:8080"               # bind to localhost only — no public exposure
     volumes:
       - jenkins-data:/var/jenkins_home      # persist Jenkins config, jobs, build history
       - jenkins-docker-certs:/certs/client:ro
     networks:
       - jenkins-net
     depends_on:
-      - docker-dind
+      - docker
 
 volumes:
   jenkins-data:                # Jenkins home: jobs, plugins, credentials, build logs
